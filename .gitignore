@@ -1,0 +1,27 @@
+# Ignore Python virtual environments
+venv/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore environment and config files
+.env
+*.env
+
+# Ignore FAISS and Chroma index folders
+faiss_index/
+chroma_index/
+
+# Ignore logs
+*.log
+
+# Ignore VS Code settings
+.vscode/
