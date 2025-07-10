@@ -25,3 +25,6 @@ chroma_index/
 
 # Ignore VS Code settings
 .vscode/
+
+# Ignore secrets.json
+secrets.json
