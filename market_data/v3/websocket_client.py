@@ -5,29 +5,17 @@ import ssl
 import websockets
 import requests
 from google.protobuf.json_format import MessageToDict
-import os
 import MarketDataFeedV3_pb2 as pb
-from dotenv import load_dotenv
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-# Read secrets from local JSON file
-import json as _json
+from utils import SecretsUtil
 
-secrets_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'secrets.json')
-if not os.path.exists(secrets_path):
-    secrets_path = os.path.join(os.path.dirname(__file__), 'secrets.json')
-
-if os.path.exists(secrets_path):
-    with open(secrets_path, 'r') as f:
-        secrets = _json.load(f)
-else:
-    secrets = {}
-
-checkhere = os.getenv('checkhere')
-print("Using checkhere:", checkhere)
+access_token = SecretsUtil.get_token()
 
 def get_market_data_feed_authorize_v3():
     """Get authorization for market data feed."""
-    access_token = secrets.get('UPSTOX_ACCESS_TOKEN')
     print("Using UPSTOX_ACCESS_TOKEN from secrets.json:", access_token)
     headers = {
         'Accept': 'application/json',
@@ -47,6 +35,15 @@ def decode_protobuf(buffer):
 
 async def fetch_market_data():
     """Fetch market data using WebSocket and print it."""
+    import websockets as ws_client
+    relay_uri = "ws://localhost:8000/ws"
+    relay_ws = None
+    try:
+        relay_ws = await ws_client.connect(relay_uri)
+        print(f"Connected to relay server at {relay_uri}")
+    except Exception as e:
+        print(f"Could not connect to relay server: {e}")
+        relay_ws = None
 
     # Create default SSL context
     ssl_context = ssl.create_default_context()
@@ -86,6 +83,16 @@ async def fetch_market_data():
 
             # Convert the decoded data to a dictionary
             data_dict = MessageToDict(decoded_data)
+
+            # Send to relay server if connected
+            if relay_ws:
+                try:
+                    await relay_ws.send(json.dumps(data_dict))
+                except Exception as e:
+                    print(f"Relay send error: {e}")
+            # Save the latest data_dict to a file for Streamlit UI
+            with open(os.path.join(os.path.dirname(__file__), '../../../latest_feed.json'), 'w') as f:
+                json.dump(data_dict, f)
 
             # Print the dictionary representation
             print(json.dumps(data_dict))

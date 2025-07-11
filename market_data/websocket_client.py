@@ -7,7 +7,12 @@ import websockets
 from google.protobuf.json_format import MessageToDict
 import os
 import MarketDataFeed_pb2 as pb
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),  '..')))
 
+from utils import SecretsUtil
+
+access_token = SecretsUtil.get_token()
 
 def get_market_data_feed_authorize(api_version, configuration):
     """Get authorization for market data feed."""
@@ -36,7 +41,7 @@ async def fetch_market_data():
     configuration = upstox_client.Configuration()
 
     api_version = '2.0'
-    configuration.access_token = os.getenv('UPSTOX_ACCESS_TOKEN')
+    configuration.access_token = access_token
 
     # Get market data feed authorization
     response = get_market_data_feed_authorize(
