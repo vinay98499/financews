@@ -6,14 +6,16 @@ clients = set()
 
 async def relay(websocket):
     clients.add(websocket)
+    print(f"Client connected: {websocket.remote_address}")
     try:
         async for message in websocket:
-            # Broadcast to all clients except sender
+            print(f"Received from client: {message}")
+            # Broadcast to all clients (including sender)
             for client in clients:
-                if client != websocket:
-                    await client.send(message)
+                await client.send(message)
     finally:
         clients.remove(websocket)
+        print(f"Client disconnected: {websocket.remote_address}")
 
 if __name__ == "__main__":
     async def main():

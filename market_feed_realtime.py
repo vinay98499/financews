@@ -5,21 +5,31 @@ st.title("WebSocket Data via JavaScript")
 
 ws_js = """
 <script>
-    // Connect to relay server (no /ws path)
+    let output = document.getElementById("output");
+    function log(msg) {
+        if (output) {
+            output.innerText += "\\n" + msg;
+        }
+        console.log(msg);
+    }
     const ws = new WebSocket("ws://localhost:8000");
-    ws.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        document.getElementById("output").innerText = JSON.stringify(data, null, 2);
-    };
     ws.onopen = function() {
-        console.log("WebSocket connection opened");
+        log("WebSocket connection opened");
+    };
+    ws.onmessage = function(event) {
+        log("Received from relay: " + event.data);
+        try {
+            const data = JSON.parse(event.data);
+            output.innerText = JSON.stringify(data, null, 2);
+        } catch (e) {
+            log("Error parsing data: " + e);
+        }
     };
     ws.onerror = function(error) {
-        document.getElementById("output").innerText = "WebSocket error: " + error;
-        console.log("WebSocket error: ", error);
+        log("WebSocket error: " + error);
     };
     ws.onclose = function() {
-        document.getElementById("output").innerText = "WebSocket connection closed.";
+        log("WebSocket connection closed.");
     };
 </script>
 <div id="output">Waiting for data...</div>

@@ -68,7 +68,16 @@ async def fetch_market_data():
             "method": "sub",
             "data": {
                 "mode": "full",
-                "instrumentKeys": ["NSE_INDEX|Nifty Bank", "NSE_INDEX|Nifty 50"]
+                "instrumentKeys": [ "NSE_EQ|RELIANCE", "NSE_EQ|TCS", "NSE_EQ|HDFCBANK", "NSE_EQ|INFY", "NSE_EQ|ICICIBANK",
+                    "NSE_EQ|LT", "NSE_EQ|ITC", "NSE_EQ|KOTAKBANK", "NSE_EQ|SBIN", "NSE_EQ|BHARTIARTL",
+                    "NSE_EQ|HINDUNILVR", "NSE_EQ|AXISBANK", "NSE_EQ|BAJFINANCE", "NSE_EQ|ASIANPAINT", "NSE_EQ|HCLTECH",
+                    "NSE_EQ|MARUTI", "NSE_EQ|SUNPHARMA", "NSE_EQ|TITAN", "NSE_EQ|ULTRACEMCO", "NSE_EQ|BAJAJFINSV",
+                    "NSE_EQ|WIPRO", "NSE_EQ|POWERGRID", "NSE_EQ|ONGC", "NSE_EQ|TATAMOTORS", "NSE_EQ|NTPC",
+                    "NSE_EQ|JSWSTEEL", "NSE_EQ|ADANIPORTS", "NSE_EQ|DIVISLAB", "NSE_EQ|GRASIM", "NSE_EQ|TATASTEEL",
+                    "NSE_EQ|CIPLA", "NSE_EQ|BPCL", "NSE_EQ|TECHM", "NSE_EQ|HDFCLIFE", "NSE_EQ|BRITANNIA",
+                    "NSE_EQ|EICHERMOT", "NSE_EQ|SHREECEM", "NSE_EQ|HEROMOTOCO", "NSE_EQ|COALINDIA", "NSE_EQ|BAJAJ-AUTO",
+                    "NSE_EQ|INDUSINDBK", "NSE_EQ|APOLLOHOSP", "NSE_EQ|DRREDDY", "NSE_EQ|SBILIFE", "NSE_EQ|M&M",
+                    "NSE_EQ|TATACONSUM", "NSE_EQ|HINDALCO", "NSE_EQ|UPL", "NSE_EQ|ADANIENT", "NSE_EQ|SRF"]
             }
         }
 
@@ -80,18 +89,18 @@ async def fetch_market_data():
         while True:
             message = await websocket.recv()
             decoded_data = decode_protobuf(message)
-
             # Convert the decoded data to a dictionary
             data_dict = MessageToDict(decoded_data)
 
             # Send to relay server if connected
             if relay_ws:
+                print("Sending data to relay server...")
                 try:
                     await relay_ws.send(json.dumps(data_dict))
                 except Exception as e:
                     print(f"Relay send error: {e}")
             # Save the latest data_dict to a file for Streamlit UI
-            with open(os.path.join(os.path.dirname(__file__), '../../../latest_feed.json'), 'w') as f:
+            with open(os.path.join(os.path.dirname(__file__), '../../latest_feed.json'), 'w') as f:
                 json.dump(data_dict, f)
 
             # Print the dictionary representation
