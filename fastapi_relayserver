@@ -1,0 +1,34 @@
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+app = FastAPI()
+clients = []
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
+)
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    clients.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            print("✅ Received message:", data)
+
+            # Broadcast to ALL connected clients (including Streamlit)
+            for client in clients:
+                try:
+                    await client.send_text(data)
+                except Exception as e:
+                    print(f"⚠️ Failed to send to client: {e}")
+    except WebSocketDisconnect:
+        clients.remove(websocket)
+        print("🔌 Client disconnected")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
