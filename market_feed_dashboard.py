@@ -2,6 +2,16 @@ import streamlit as st
 import json
 import os
 import time
+import json
+
+# Load mapping
+with open('instrument_map.json', 'r') as f:
+    INSTRUMENT_NAMES = json.load(f)
+
+from streamlit_autorefresh import st_autorefresh
+
+# Refresh UI every 3 seconds
+st_autorefresh(interval=10000, key="auto-refresh")
 
 st.set_page_config(page_title="Upstox Live Market Feed", layout="wide")
 st.title("📈 Upstox Live Market Feed")
@@ -20,16 +30,18 @@ def get_latest_feed():
 feed, last_modified = get_latest_feed()
 
 if feed:
-    st.write("**Raw Feed Data:**")
-    st.json(feed)
+    # st.write("**Raw Feed Data:**")
+    # st.json(feed)
     if last_modified:
         st.caption(f"Last updated: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last_modified))}")
 
     feeds = feed.get("feeds", {})
     for symbol, data in feeds.items():
-        st.subheader(symbol)
-        try:
-            indexFF = data["fullFeed"]["indexFF"]
+        instrumentKey = symbol.split("|")[1];                
+        name = INSTRUMENT_NAMES.get(instrumentKey, instrumentKey)
+        st.subheader(f"{name} ({instrumentKey})")
+        try:   
+            indexFF = data["fullFeed"]["marketFF"]
             ltp = indexFF["ltpc"]["ltp"]
             st.metric("LTP", ltp)
             ohlc_list = indexFF["marketOHLC"]["ohlc"]
@@ -40,6 +52,3 @@ if feed:
 else:
     st.info("Waiting for live market feed...")
 
-# Auto-refresh every second
-st.experimental_rerun()
-time.sleep(1)

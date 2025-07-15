@@ -68,7 +68,7 @@ async def fetch_market_data():
             "method": "sub",
             "data": {
                 "mode": "full",
-                "instrumentKeys": ["NSE_EQ|INE839G01010"]
+                "instrumentKeys": ["NSE_EQ|INE931S01010","NSE_EQ|INE423A01024","NSE_EQ|INE364U01010","NSE_EQ|INE742F01042","NSE_EQ|INE814H01011"]
             }
         }
 
