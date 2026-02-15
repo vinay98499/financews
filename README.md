@@ -34,6 +34,8 @@ A personal finance and stock analytics workspace with Upstox API integration, St
      UPSTOX_ACCESS_TOKEN=your_access_token_here
      ```
 
+5.run first websocketclient and then fastapi relayserver and then streamlit market feed dashbord app.
+
 ## Usage
 - **Streamlit Dashboard:**
   ```sh
