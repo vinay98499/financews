@@ -1,10 +1,17 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
-from statsmodels.tsa.arima.model import ARIMA
-import numpy as np
+import json
+import os
+import time
+from streamlit_autorefresh import st_autorefresh
 
-# --- Load Default File ---
+# Auto refresh every 10 seconds
+st_autorefresh(interval=10000, key="refresh")
+
+st.set_page_config(page_title="Daily Loss Tracker", layout="wide")
+st.title("📉 Real-Time Portfolio Daily Loss Tracker")
+
+# -------- Load Portfolio --------
 DEFAULT_FILE = "Stocks_Holdings_Statement_14-02-2026.xlsx"
 
 @st.cache_data
@@ -16,139 +23,124 @@ def load_portfolio(file):
     df = df.dropna(subset=["Stock Name"])
     df.reset_index(drop=True, inplace=True)
 
-    numeric_cols = [
-        "Quantity", "Average buy price", "Buy value",
-        "Closing price", "Closing value", "Unrealised P&L"
-    ]
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # Optional: mock Sector if not present
-    if "Sector" not in df.columns:
-        import random
-        sectors = ["Finance", "Energy", "IT", "Consumer", "Infra"]
-        df["Sector"] = [random.choice(sectors) for _ in range(len(df))]
-
+    df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce")
     return df
 
-# --- UI ---
-st.set_page_config(page_title="AI Financial Advisor", layout="wide")
-st.title("📊 Personal AI Financial Advisor")
+uploaded_file = st.sidebar.file_uploader("Upload Portfolio", type=["xlsx"])
+portfolio_df = load_portfolio(uploaded_file) if uploaded_file else load_portfolio(DEFAULT_FILE)
 
-# File uploader
-st.sidebar.header("📤 Upload a different portfolio")
-uploaded_file = st.sidebar.file_uploader("Choose Excel file", type=["xlsx"])
+# -------- Load Instrument Mapping --------
+with open("instrument_map.json", "r") as f:
+    INSTRUMENT_NAMES = json.load(f)
 
-# Load data
-df = load_portfolio(uploaded_file) if uploaded_file else load_portfolio(DEFAULT_FILE)
-st.caption("📂 Showing: " + ("Uploaded Portfolio" if uploaded_file else "Default Portfolio (Person X)"))
+# Reverse mapping (Stock Name → Instrument Key)
+NAME_TO_KEY = {v: k for k, v in INSTRUMENT_NAMES.items()}
 
-# --- Display Data ---
-st.subheader("💼 Portfolio Overview")
-st.dataframe(df, use_container_width=True)
+# -------- Load Latest Feed --------
+feed_path = os.path.join(os.path.dirname(__file__), "latest_feed.json")
 
-# --- Metrics ---
-total_invested = df["Buy value"].sum()
-total_value = df["Closing value"].sum()
-total_pnl = df["Unrealised P&L"].sum()
+def get_latest_feed():
+    if os.path.exists(feed_path):
+        with open(feed_path, "r") as f:
+            try:
+                return json.load(f), os.path.getmtime(feed_path)
+            except:
+                return None, None
+    return None, None
 
-col1, col2, col3 = st.columns(3)
-col1.metric("📥 Total Invested", f"₹{total_invested:,.2f}")
-col2.metric("📈 Current Value", f"₹{total_value:,.2f}")
-col3.metric("💰 Unrealised P&L", f"₹{total_pnl:,.2f}", delta=f"{(total_pnl/total_invested)*100:.2f}%")
+feed, last_modified = get_latest_feed()
 
-# --- Pie Chart: Stock Allocation ---
-st.subheader("📌 Allocation by Stock")
-st.plotly_chart({
-    "data": [{
-        "type": "pie",
-        "labels": df["Stock Name"],
-        "values": df["Closing value"],
-        "hole": 0.4
-    }],
-    "layout": {"title": "Portfolio Allocation"}
-})
+if not feed:
+    st.warning("Waiting for live feed...")
+    st.stop()
 
-# --- Pie Chart: Sector Allocation ---
-if "Sector" in df.columns:
-    st.subheader("🗂️ Allocation by Sector")
-    sector_data = df.groupby("Sector")["Closing value"].sum().reset_index()
-    st.plotly_chart({
-        "data": [{
-            "type": "pie",
-            "labels": sector_data["Sector"],
-            "values": sector_data["Closing value"],
-            "hole": 0.4
-        }],
-        "layout": {"title": "Sector-Wise Allocation"}
-    })
+if last_modified:
+    st.caption("Last updated: " + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_modified)))
 
-# --- Bar Chart: P&L per Stock ---
-st.subheader("📊 Stock-wise Unrealised P&L")
-st.bar_chart(df.set_index("Stock Name")["Unrealised P&L"])
+feeds = feed.get("feeds", {})
 
-# --- Big Gainers / Losers ---
-st.subheader("📈 Top Gainers & 📉 Top Losers")
+# -------- Extract Market Data --------
+market_data = {}
 
-gain_df = df.sort_values(by="Unrealised P&L", ascending=False)
-top_gainers = gain_df.head(3)
-top_losers = gain_df.tail(3).sort_values(by="Unrealised P&L")
+for symbol, data in feeds.items():
+    try:
+        instrument_key = symbol.split("|")[1]
+        name = INSTRUMENT_NAMES.get(instrument_key, instrument_key)
+
+        marketFF = data["fullFeed"]["marketFF"]
+        ltp = marketFF["ltpc"]["ltp"]
+
+        ohlc_list = marketFF.get("marketOHLC", {}).get("ohlc", [])
+        prev_close = None
+
+        for entry in ohlc_list:
+            if entry.get("interval") == "1d":
+                prev_close = entry.get("close")
+                break
+
+        if prev_close is None and ohlc_list:
+            prev_close = ohlc_list[0].get("close")
+
+        market_data[name] = {
+            "ltp": ltp,
+            "prev_close": prev_close
+        }
+
+    except Exception as e:
+        continue
+
+# -------- Merge Portfolio + Market Data --------
+rows = []
+
+for _, row in portfolio_df.iterrows():
+    stock_name = row["Stock Name"]
+    qty = row["Quantity"]
+
+    if stock_name in market_data:
+        ltp = market_data[stock_name]["ltp"]
+        prev_close = market_data[stock_name]["prev_close"]
+
+        if prev_close and qty:
+            day_pl = qty * (ltp - prev_close)
+            day_pct = ((ltp - prev_close) / prev_close) * 100
+
+            rows.append({
+                "Stock": stock_name,
+                "Qty": qty,
+                "Prev Close": round(prev_close, 2),
+                "Current": round(ltp, 2),
+                "Day P/L ₹": round(day_pl, 2),
+                "Day P/L %": round(day_pct, 2)
+            })
+
+result_df = pd.DataFrame(rows)
+
+if result_df.empty:
+    st.warning("No matching stocks found between portfolio and live feed.")
+    st.stop()
+
+# -------- Portfolio Metrics --------
+total_day_pl = result_df["Day P/L ₹"].sum()
 
 col1, col2 = st.columns(2)
-with col1:
-    st.markdown("### 🚀 Top Gainers")
-    st.table(top_gainers[["Stock Name", "Unrealised P&L"]])
-with col2:
-    st.markdown("### 🧨 Top Losers")
-    st.table(top_losers[["Stock Name", "Unrealised P&L"]])
 
-# --- ML Return Forecast (ARIMA) ---
-with st.expander("📈 ML Return Forecast (ARIMA)"):
-    # Show all unique stock names for mapping help
-    st.write("**Stocks in your portfolio:**", list(df["Stock Name"].unique()))
-    # Example mapping: expand as needed for your stocks
-    ticker_map = {
-        # Add your mappings here, e.g.:
-        "RELIANCE INDUSTRIES LTD": "RELIANCE.NS"
-        # "TATA CONSULTANCY SERVICES LTD": "TCS.NS",
-        # "INFOSYS LTD": "INFY.NS",
-    }
-    available_stocks = [name for name in df["Stock Name"].unique() if name in ticker_map]
-    if not available_stocks:
-        st.info("No stocks in your portfolio have a valid Yahoo ticker mapping. Please update the mapping in the code above. See the list of stock names above and add them to the mapping.")
-    else:
-        stock_choice = st.selectbox("Choose a stock to forecast", available_stocks)
-        ticker = ticker_map.get(stock_choice)
-        if st.button("Run Forecast"):
-            if ticker:
-                try:
-                    data = yf.download(ticker, period="2y", interval="1d")
-                    st.write("Downloaded data shape:", data.shape)
-                    st.write("Downloaded data head:", data.head())
-                    # Handle multi-index columns (sometimes happens with yfinance)
-                    if isinstance(data.columns, pd.MultiIndex):
-                        st.write("MultiIndex columns:", list(data.columns))
-                        # Try to find any column with 'Close' in the first level
-                        close_candidates = [col for col in data.columns if col[0] == "Close"]
-                        if close_candidates:
-                            close_prices = data[close_candidates[0]].dropna()
-                        else:
-                            st.warning("MultiIndex columns found, but no 'Close' price in any subcolumn. Check columns above.")
-                            close_prices = pd.Series(dtype=float)
-                    else:
-                        close_prices = data["Close"].dropna() if "Close" in data.columns else pd.Series(dtype=float)
-                    if close_prices.size > 30 and close_prices.ndim == 1:
-                        model = ARIMA(close_prices, order=(1,1,1))
-                        model_fit = model.fit()
-                        forecast = model_fit.forecast(steps=126)  # ~6 months
-                        last_price = close_prices.iloc[-1]
-                        forecasted_price = forecast.iloc[-1]
-                        forecast_return = (forecasted_price - last_price) / last_price * 100
-                        st.metric("📊 6-Month Forecasted Return", f"{forecast_return:.2f}%", f"{forecasted_price-last_price:,.2f} ₹")
-                        st.line_chart(np.concatenate([close_prices.values, forecast.values]))
-                    else:
-                        st.warning("No sufficient univariate historical data found for this stock. See the data above for details.")
-                except Exception as e:
-                    st.error(f"Forecasting failed: {e}")
-            else:
-                st.warning("No Yahoo ticker mapping found for this stock. Please update the mapping in the code.")
+col1.metric("📊 Total Daily P/L", f"₹{total_day_pl:,.2f}")
+col2.metric("📉 Biggest Loss", 
+            result_df.nsmallest(1, "Day P/L ₹")["Stock"].values[0])
+
+# -------- Table --------
+st.subheader("📋 Daily Profit / Loss per Stock")
+
+result_df = result_df.sort_values("Day P/L ₹")
+
+st.dataframe(result_df, use_container_width=True)
+
+# -------- Top Losers --------
+st.subheader("📉 Top 5 Daily Losers")
+
+top_losers = result_df.nsmallest(5, "Day P/L ₹")
+st.table(top_losers[["Stock", "Day P/L ₹", "Day P/L %"]])
+
+# -------- Chart --------
+st.subheader("📊 Daily P/L Distribution")
+st.bar_chart(result_df.set_index("Stock")["Day P/L ₹"])
