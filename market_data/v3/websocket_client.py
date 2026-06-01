@@ -13,6 +13,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from utils import SecretsUtil
 
 access_token = SecretsUtil.get_token()
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+INSTRUMENT_MAP_PATH = os.path.join(ROOT_DIR, "instrument_map.json")
+LATEST_FEED_PATH = os.path.join(ROOT_DIR, "latest_feed.json")
+
+
+def load_instrument_keys():
+    with open(INSTRUMENT_MAP_PATH, "r") as f:
+        instrument_map = json.load(f)
+    return [f"NSE_EQ|{instrument_key}" for instrument_key in instrument_map]
 
 def get_market_data_feed_authorize_v3():
     """Get authorization for market data feed."""
@@ -37,6 +46,7 @@ async def fetch_market_data():
     """Fetch market data using WebSocket and print it."""
     import websockets as ws_client
     relay_uri = "ws://localhost:8000/ws"
+    instrument_keys = load_instrument_keys()
     relay_ws = None
     try:
         relay_ws = await ws_client.connect(relay_uri)
@@ -68,9 +78,10 @@ async def fetch_market_data():
             "method": "sub",
             "data": {
                 "mode": "full",
-                "instrumentKeys": ["NSE_EQ|INE931S01010","NSE_EQ|INE423A01024","NSE_EQ|INE364U01010","NSE_EQ|INE742F01042","NSE_EQ|INE814H01011"]
+                "instrumentKeys": instrument_keys
             }
         }
+        print(f"Subscribed to {len(instrument_keys)} instruments")
 
         # Convert data to binary and send over WebSocket
         binary_data = json.dumps(data).encode('utf-8')
@@ -91,7 +102,7 @@ async def fetch_market_data():
                 except Exception as e:
                     print(f"Relay send error: {e}")
             # Save the latest data_dict to a file for Streamlit UI
-            with open(os.path.join(os.path.dirname(__file__), '../../latest_feed.json'), 'w') as f:
+            with open(LATEST_FEED_PATH, 'w') as f:
                 json.dump(data_dict, f)
 
             # Print the dictionary representation
